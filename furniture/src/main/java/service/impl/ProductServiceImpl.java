@@ -9,30 +9,30 @@ import com.suhada.furniture.repository.ProductRepository;
 import com.suhada.furniture.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Service  // Tells Spring: "This is a service component"
-@RequiredArgsConstructor  // Lombok creates constructor for final fields
-@Slf4j  // Lombok creates logger: log.info(), log.error()
+@Service
+@RequiredArgsConstructor
+@Slf4j
 public class ProductServiceImpl implements ProductService {
 
-    // Dependencies injected by Spring (via constructor)
     private final ProductRepository productRepository;
 
     // ============================================================
     // CREATE PRODUCT
     // ============================================================
     @Override
-    @Transactional  // If anything fails, rollback database changes
+    @Transactional
     public ProductDTO createProduct(CreateProductRequest request) {
 
         log.info("Creating new product with SKU: {}", request.getSku());
 
-        // Step 1: Validate SKU is unique
         if (productRepository.existsBySku(request.getSku())) {
             log.error("Product with SKU {} already exists", request.getSku());
             throw new BadRequestException(
@@ -40,7 +40,6 @@ public class ProductServiceImpl implements ProductService {
             );
         }
 
-        // Step 2: Create Product entity from request
         Product product = Product.builder()
                 .sku(request.getSku())
                 .name(request.getName())
@@ -52,12 +51,10 @@ public class ProductServiceImpl implements ProductService {
                 .category(request.getCategory())
                 .build();
 
-        // Step 3: Save to database
         Product savedProduct = productRepository.save(product);
 
         log.info("Product created successfully with ID: {}", savedProduct.getId());
 
-        // Step 4: Convert Entity to DTO and return
         return mapToDTO(savedProduct);
     }
 
@@ -69,7 +66,6 @@ public class ProductServiceImpl implements ProductService {
 
         log.info("Fetching product with ID: {}", id);
 
-        // Find product or throw exception
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> {
                     log.error("Product not found with ID: {}", id);
@@ -108,7 +104,6 @@ public class ProductServiceImpl implements ProductService {
 
         log.info("Found {} products", products.size());
 
-        // Convert list of entities to list of DTOs
         return products.stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
@@ -139,7 +134,6 @@ public class ProductServiceImpl implements ProductService {
 
         log.info("Fetching low stock products");
 
-        // Use custom query from repository
         List<Product> products = productRepository.findLowStockProducts();
 
         log.warn("Found {} products with low stock", products.size());
@@ -176,11 +170,9 @@ public class ProductServiceImpl implements ProductService {
 
         log.info("Updating product with ID: {}", id);
 
-        // Step 1: Find existing product
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product", "id", id));
 
-        // Step 2: Check if new SKU conflicts with another product
         if (!product.getSku().equals(request.getSku())) {
             if (productRepository.existsBySku(request.getSku())) {
                 throw new BadRequestException(
@@ -189,7 +181,6 @@ public class ProductServiceImpl implements ProductService {
             }
         }
 
-        // Step 3: Update fields
         product.setSku(request.getSku());
         product.setName(request.getName());
         product.setDescription(request.getDescription());
@@ -199,7 +190,6 @@ public class ProductServiceImpl implements ProductService {
         product.setReorderLevel(request.getReorderLevel());
         product.setCategory(request.getCategory());
 
-        // Step 4: Save changes
         Product updatedProduct = productRepository.save(product);
 
         log.info("Product {} updated successfully", id);
@@ -216,19 +206,17 @@ public class ProductServiceImpl implements ProductService {
 
         log.info("Deleting product with ID: {}", id);
 
-        // Check if product exists
         if (!productRepository.existsById(id)) {
             throw new ResourceNotFoundException("Product", "id", id);
         }
 
-        // Delete from database
         productRepository.deleteById(id);
 
         log.info("Product {} deleted successfully", id);
     }
 
     // ============================================================
-    // UPDATE STOCK (Used when order is placed)
+    // UPDATE STOCK (CRITICAL FOR ORDERS!)
     // ============================================================
     @Override
     @Transactional
@@ -242,7 +230,6 @@ public class ProductServiceImpl implements ProductService {
 
         int newStock = product.getStockQuantity() + quantityChange;
 
-        // Prevent negative stock
         if (newStock < 0) {
             log.error("Insufficient stock for product {}. Available: {}, Requested: {}",
                     productId, product.getStockQuantity(), Math.abs(quantityChange));
@@ -259,7 +246,6 @@ public class ProductServiceImpl implements ProductService {
 
         log.info("Stock updated for product {}. New stock: {}", productId, newStock);
 
-        // Check if stock is low and log warning
         if (product.isLowStock()) {
             log.warn("⚠️ Product '{}' is now low on stock! Current: {}, Reorder level: {}",
                     product.getName(), product.getStockQuantity(), product.getReorderLevel());
@@ -267,8 +253,57 @@ public class ProductServiceImpl implements ProductService {
     }
 
     // ============================================================
-    // HELPER METHOD: Convert Entity to DTO
+    // PAGINATION METHODS
     // ============================================================
+
+    @Override
+    public Page<ProductDTO> getAllProductsPaginated(Pageable pageable) {
+
+        log.info("Fetching products - Page: {}, Size: {}, Sort: {}",
+                pageable.getPageNumber(), pageable.getPageSize(), pageable.getSort());
+
+        Page<Product> productPage = productRepository.findAll(pageable);
+
+        log.info("Found {} products on page {} of {}",
+                productPage.getNumberOfElements(),
+                productPage.getNumber() + 1,
+                productPage.getTotalPages());
+
+        return productPage.map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<ProductDTO> searchProductsPaginated(String query, Pageable pageable) {
+
+        log.info("Searching products with query: '{}' - Page: {}, Size: {}",
+                query, pageable.getPageNumber(), pageable.getPageSize());
+
+        Page<Product> productPage = productRepository
+                .findByNameContainingIgnoreCase(query, pageable);
+
+        log.info("Found {} matching products", productPage.getTotalElements());
+
+        return productPage.map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<ProductDTO> getProductsByCategoryPaginated(String category, Pageable pageable) {
+
+        log.info("Fetching products in category: {} - Page: {}, Size: {}",
+                category, pageable.getPageNumber(), pageable.getPageSize());
+
+        // FIXED: Use findByCategory instead of findByCategoryIgnoreCase
+        Page<Product> productPage = productRepository.findByCategory(category, pageable);
+
+        log.info("Found {} products in category {}", productPage.getTotalElements(), category);
+
+        return productPage.map(this::mapToDTO);
+    }
+
+    // ============================================================
+    // HELPER METHOD
+    // ============================================================
+
     private ProductDTO mapToDTO(Product product) {
         ProductDTO dto = new ProductDTO();
         dto.setId(product.getId());
@@ -282,9 +317,6 @@ public class ProductServiceImpl implements ProductService {
         dto.setImages(product.getImages());
         dto.setLowStock(product.isLowStock());
         dto.setCreatedAt(product.getCreatedAt());
-
-        // Note: We don't include costPrice in DTO (business secret!)
-
         return dto;
     }
 }

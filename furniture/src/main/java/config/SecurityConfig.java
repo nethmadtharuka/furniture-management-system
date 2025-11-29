@@ -30,7 +30,7 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
 
     // ============================================================
-    // PASSWORD ENCODER - BCrypt
+    // PASSWORD ENCODER
     // ============================================================
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -52,56 +52,65 @@ public class SecurityConfig {
     // AUTHENTICATION MANAGER
     // ============================================================
     @Bean
-    public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration config) throws Exception {
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
+            throws Exception {
         return config.getAuthenticationManager();
     }
 
     // ============================================================
-    // SECURITY FILTER CHAIN - THE MAIN CONFIGURATION
+    // SECURITY FILTER CHAIN
     // ============================================================
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
         http
-                // Disable CSRF (not needed for stateless JWT)
                 .csrf(AbstractHttpConfigurer::disable)
 
-                // Configure authorization
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints - anyone can access
+
+                        // ============================================================
+                        // PUBLIC ENDPOINTS
+                        // ============================================================
                         .requestMatchers(
-                                "/api/auth/**",           // Login, register
-                                "/api/test/**",           // Test endpoints
-                                "/api/test-repo/**"       // Test repository endpoints
+                                "/api/auth/**",
+                                "/api/test/**",
+                                "/api/test-repo/**",
+
+                                // Swagger Endpoints (VERY IMPORTANT)
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
                         ).permitAll()
 
-                        // Public read-only product endpoints
+                        // Public read-only endpoints
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/customers/**").permitAll()
 
-                        // Admin-only endpoints
+                        // ============================================================
+                        // ADMIN-ONLY ENDPOINTS
+                        // ============================================================
                         .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/customers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/orders/**").hasRole("ADMIN")
 
-                        // Staff and Admin can manage products
-                        .requestMatchers(HttpMethod.POST, "/api/products/**").hasAnyRole("ADMIN", "STAFF")
-                        .requestMatchers(HttpMethod.PUT, "/api/products/**").hasAnyRole("ADMIN", "STAFF")
+                        // STAFF + ADMIN
+                        .requestMatchers(HttpMethod.POST, "/api/products/**")
+                        .hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(HttpMethod.PUT, "/api/products/**")
+                        .hasAnyRole("ADMIN", "STAFF")
 
-                        // All other endpoints require authentication
+                        // ============================================================
+                        // ANY AUTHENTICATED USER
+                        // ============================================================
                         .anyRequest().authenticated()
                 )
 
-                // Stateless session (JWT, no server-side sessions)
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
 
-                // Set authentication provider
                 .authenticationProvider(authenticationProvider())
 
-                // Add JWT filter before UsernamePasswordAuthenticationFilter
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

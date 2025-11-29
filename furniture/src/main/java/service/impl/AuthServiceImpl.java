@@ -10,6 +10,7 @@ import com.suhada.furniture.exception.BadRequestException;
 import com.suhada.furniture.repository.UserRepository;
 import com.suhada.furniture.security.JwtUtil;
 import com.suhada.furniture.service.AuthService;
+import com.suhada.furniture.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -30,6 +31,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
+    private final EmailService emailService;
 
     // ============================================================
     // REGISTER USER
@@ -49,17 +51,24 @@ public class AuthServiceImpl implements AuthService {
         // Create user entity
         User user = User.builder()
                 .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword()))  // Encrypt password!
+                .password(passwordEncoder.encode(request.getPassword()))
                 .fullName(request.getFullName())
                 .phoneNumber(request.getPhoneNumber())
-                .role(request.getRole() != null ? request.getRole() : Role.CUSTOMER)  // Default to CUSTOMER
+                .role(request.getRole() != null ? request.getRole() : Role.CUSTOMER)
                 .build();
 
-        // Save to database
+        // Save user
         User savedUser = userRepository.save(user);
 
         log.info("✅ User registered successfully: {} with role: {}",
                 savedUser.getEmail(), savedUser.getRole());
+
+        // Optionally send welcome email
+        emailService.sendEmail(
+                savedUser.getEmail(),
+                "Welcome to Suhada Furniture",
+                "Hi " + savedUser.getFullName() + ", thanks for registering!"
+        );
 
         return mapToDTO(savedUser);
     }
@@ -72,7 +81,6 @@ public class AuthServiceImpl implements AuthService {
 
         log.info("Login attempt for user: {}", request.getEmail());
 
-        // Authenticate user
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getEmail(),
@@ -82,20 +90,15 @@ public class AuthServiceImpl implements AuthService {
 
         log.info("✅ Authentication successful for: {}", request.getEmail());
 
-        // Get user details
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-
-        // Generate JWT token
         String token = jwtUtil.generateToken(userDetails);
 
         log.info("✅ JWT token generated for: {}", request.getEmail());
 
-        // Get user from database
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
-        // Build response
-        LoginResponse response = LoginResponse.builder()
+        return LoginResponse.builder()
                 .token(token)
                 .type("Bearer")
                 .userId(user.getId())
@@ -103,10 +106,6 @@ public class AuthServiceImpl implements AuthService {
                 .fullName(user.getFullName())
                 .role(user.getRole())
                 .build();
-
-        log.info("✅ Login successful for: {} (Role: {})", user.getEmail(), user.getRole());
-
-        return response;
     }
 
     // ============================================================
@@ -115,7 +114,6 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public UserDTO getCurrentUser() {
 
-        // Get current authentication from security context
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -123,7 +121,6 @@ public class AuthServiceImpl implements AuthService {
         }
 
         String email = authentication.getName();
-
         log.info("Getting current user: {}", email);
 
         User user = userRepository.findByEmail(email)
@@ -133,7 +130,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     // ============================================================
-    // HELPER METHOD
+    // HELPER: MAP USER TO DTO
     // ============================================================
     private UserDTO mapToDTO(User user) {
         UserDTO dto = new UserDTO();

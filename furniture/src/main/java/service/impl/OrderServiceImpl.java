@@ -7,6 +7,7 @@ import com.suhada.furniture.exception.InsufficientStockException;
 import com.suhada.furniture.exception.ResourceNotFoundException;
 import com.suhada.furniture.repository.*;
 import com.suhada.furniture.service.OrderService;
+import com.suhada.furniture.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,60 +28,38 @@ public class OrderServiceImpl implements OrderService {
     private final CustomerRepository customerRepository;
     private final ProductRepository productRepository;
     private final OrderItemRepository orderItemRepository;
+    private final EmailService emailService;
 
     // ============================================================
-    // CREATE ORDER - THE MAIN BUSINESS LOGIC!
+    // CREATE ORDER
     // ============================================================
     @Override
-    @Transactional  // CRITICAL: Everything must succeed or rollback!
+    @Transactional
     public OrderDTO createOrder(CreateOrderRequest request) {
 
         log.info("Creating new order for customer ID: {}", request.getCustomerId());
 
-        // ========== STEP 1: VALIDATE CUSTOMER ==========
+        // -------- STEP 1: VALIDATE CUSTOMER --------
         Customer customer = customerRepository.findById(request.getCustomerId())
-                .orElseThrow(() -> {
-                    log.error("Customer not found with ID: {}", request.getCustomerId());
-                    return new ResourceNotFoundException("Customer", "id", request.getCustomerId());
-                });
+                .orElseThrow(() -> new ResourceNotFoundException("Customer", "id", request.getCustomerId()));
 
-        log.info("Customer found: {}", customer.getFullName());
-
-        // ========== STEP 2: CREATE ORDER ENTITY ==========
+        // -------- STEP 2: CREATE ORDER --------
         Order order = Order.builder()
                 .customer(customer)
                 .deliveryAddress(request.getDeliveryAddress())
                 .notes(request.getNotes())
-                .orderItems(new ArrayList<>())  // Initialize empty list
+                .orderItems(new ArrayList<>())
                 .build();
 
-        // Note: orderNumber, status, paymentStatus set automatically by @PrePersist
-
-        log.info("Order entity created with number: {}", order.getOrderNumber());
-
-        // ========== STEP 3: PROCESS EACH ORDER ITEM ==========
         BigDecimal totalAmount = BigDecimal.ZERO;
 
+        // -------- STEP 3: PROCESS ITEMS --------
         for (OrderItemRequest itemRequest : request.getItems()) {
 
-            log.info("Processing item: productId={}, quantity={}",
-                    itemRequest.getProductId(), itemRequest.getQuantity());
-
-            // Find product
             Product product = productRepository.findById(itemRequest.getProductId())
-                    .orElseThrow(() -> {
-                        log.error("Product not found with ID: {}", itemRequest.getProductId());
-                        return new ResourceNotFoundException("Product", "id", itemRequest.getProductId());
-                    });
+                    .orElseThrow(() -> new ResourceNotFoundException("Product", "id", itemRequest.getProductId()));
 
-            log.info("Product found: {} (Stock: {})",
-                    product.getName(), product.getStockQuantity());
-
-            // Check stock availability
             if (product.getStockQuantity() < itemRequest.getQuantity()) {
-                log.error("Insufficient stock for product {}. Available: {}, Requested: {}",
-                        product.getName(), product.getStockQuantity(), itemRequest.getQuantity());
-
                 throw new InsufficientStockException(
                         product.getName(),
                         product.getStockQuantity(),
@@ -88,14 +67,9 @@ public class OrderServiceImpl implements OrderService {
                 );
             }
 
-            // Calculate prices for this item
             BigDecimal unitPrice = product.getPrice();
             BigDecimal itemTotal = unitPrice.multiply(new BigDecimal(itemRequest.getQuantity()));
 
-            log.info("Item pricing: unitPrice={}, quantity={}, itemTotal={}",
-                    unitPrice, itemRequest.getQuantity(), itemTotal);
-
-            // Create order item
             OrderItem orderItem = OrderItem.builder()
                     .order(order)
                     .product(product)
@@ -104,47 +78,25 @@ public class OrderServiceImpl implements OrderService {
                     .totalPrice(itemTotal)
                     .build();
 
-            // Add to order
             order.getOrderItems().add(orderItem);
 
-            // Add to running total
-            totalAmount = totalAmount.add(itemTotal);
-
-            // ========== REDUCE STOCK ==========
-            int newStock = product.getStockQuantity() - itemRequest.getQuantity();
-            product.setStockQuantity(newStock);
+            // Stock reduce
+            product.setStockQuantity(product.getStockQuantity() - itemRequest.getQuantity());
             productRepository.save(product);
 
-            log.info("Stock reduced for product {}. New stock: {}",
-                    product.getName(), newStock);
-
-            // Warn if stock is now low
-            if (product.isLowStock()) {
-                log.warn("⚠️ ALERT: Product '{}' is now LOW ON STOCK! Current: {}, Reorder level: {}",
-                        product.getName(), product.getStockQuantity(), product.getReorderLevel());
-            }
+            totalAmount = totalAmount.add(itemTotal);
         }
 
-        // ========== STEP 4: SET TOTAL AMOUNT ==========
+        // -------- STEP 4: SAVE ORDER --------
         order.setTotalAmount(totalAmount);
-
-        log.info("Order total calculated: Rs. {}", totalAmount);
-
-        // ========== STEP 5: SAVE ORDER ==========
         Order savedOrder = orderRepository.save(order);
 
-        log.info("✅ Order saved successfully! Order ID: {}, Order Number: {}, Total: Rs. {}",
-                savedOrder.getId(), savedOrder.getOrderNumber(), savedOrder.getTotalAmount());
+        log.info("✅ Order saved successfully! Order ID: {}, Order Number: {}",
+                savedOrder.getId(), savedOrder.getOrderNumber());
 
-        // ========== STEP 6: SEND NOTIFICATIONS ==========
-        // TODO: We'll implement these later!
-        // sendWhatsAppNotification(savedOrder);
-        // sendEmailNotification(savedOrder);
-        // sendRealtimeNotification(savedOrder);
+        // -------- STEP 5: SEND EMAIL NOTIFICATION --------
+        emailService.sendOrderConfirmationEmail(savedOrder);
 
-        log.info("Order notifications would be sent here (not implemented yet)");
-
-        // ========== STEP 7: RETURN ORDER DTO ==========
         return mapToDTO(savedOrder);
     }
 
@@ -154,13 +106,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderDTO getOrderById(Long id) {
 
-        log.info("Fetching order with ID: {}", id);
-
         Order order = orderRepository.findById(id)
-                .orElseThrow(() -> {
-                    log.error("Order not found with ID: {}", id);
-                    return new ResourceNotFoundException("Order", "id", id);
-                });
+                .orElseThrow(() -> new ResourceNotFoundException("Order", "id", id));
 
         return mapToDTO(order);
     }
@@ -171,13 +118,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderDTO getOrderByOrderNumber(String orderNumber) {
 
-        log.info("Fetching order with number: {}", orderNumber);
-
         Order order = orderRepository.findByOrderNumber(orderNumber)
-                .orElseThrow(() -> {
-                    log.error("Order not found with number: {}", orderNumber);
-                    return new ResourceNotFoundException("Order", "orderNumber", orderNumber);
-                });
+                .orElseThrow(() -> new ResourceNotFoundException("Order", "orderNumber", orderNumber));
 
         return mapToDTO(order);
     }
@@ -188,13 +130,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public List<OrderDTO> getAllOrders() {
 
-        log.info("Fetching all orders");
-
-        List<Order> orders = orderRepository.findAll();
-
-        log.info("Found {} orders", orders.size());
-
-        return orders.stream()
+        return orderRepository.findAll().stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
@@ -205,18 +141,11 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public List<OrderDTO> getOrdersByCustomerId(Long customerId) {
 
-        log.info("Fetching orders for customer ID: {}", customerId);
-
-        // Verify customer exists
         if (!customerRepository.existsById(customerId)) {
             throw new ResourceNotFoundException("Customer", "id", customerId);
         }
 
-        List<Order> orders = orderRepository.findByCustomerId(customerId);
-
-        log.info("Found {} orders for customer {}", orders.size(), customerId);
-
-        return orders.stream()
+        return orderRepository.findByCustomerId(customerId).stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
@@ -227,28 +156,18 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public List<OrderDTO> getOrdersByStatus(OrderStatus status) {
 
-        log.info("Fetching orders with status: {}", status);
-
-        List<Order> orders = orderRepository.findByStatus(status);
-
-        log.info("Found {} orders with status {}", orders.size(), status);
-
-        return orders.stream()
+        return orderRepository.findByStatus(status).stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
     // ============================================================
-    // GET RECENT ORDERS
+    // RECENT ORDERS
     // ============================================================
     @Override
     public List<OrderDTO> getRecentOrders(int limit) {
 
-        log.info("Fetching {} most recent orders", limit);
-
-        List<Order> orders = orderRepository.findTop10ByOrderByCreatedAtDesc();
-
-        return orders.stream()
+        return orderRepository.findTop10ByOrderByCreatedAtDesc().stream()
                 .limit(limit)
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
@@ -261,8 +180,6 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderDTO updateOrderStatus(Long orderId, OrderStatus newStatus) {
 
-        log.info("Updating order {} status to {}", orderId, newStatus);
-
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order", "id", orderId));
 
@@ -271,11 +188,8 @@ public class OrderServiceImpl implements OrderService {
 
         Order updatedOrder = orderRepository.save(order);
 
-        log.info("Order {} status updated from {} to {}",
-                orderId, oldStatus, newStatus);
-
-        // Send notification about status change
-        // TODO: sendStatusChangeNotification(updatedOrder, oldStatus, newStatus);
+        // Send update email
+        emailService.sendOrderStatusUpdateEmail(updatedOrder, oldStatus.name(), newStatus.name());
 
         return mapToDTO(updatedOrder);
     }
@@ -287,63 +201,42 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderDTO cancelOrder(Long orderId) {
 
-        log.info("Cancelling order: {}", orderId);
-
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order", "id", orderId));
 
-        // Can only cancel pending or confirmed orders
         if (order.getStatus() == OrderStatus.SHIPPED ||
                 order.getStatus() == OrderStatus.DELIVERED) {
-            throw new BadRequestException(
-                    "Cannot cancel order that is already " + order.getStatus()
-            );
+            throw new BadRequestException("Cannot cancel order already " + order.getStatus());
         }
 
-        // Return stock to inventory
+        // Return stock
         for (OrderItem item : order.getOrderItems()) {
             Product product = item.getProduct();
-            int returnedStock = product.getStockQuantity() + item.getQuantity();
-            product.setStockQuantity(returnedStock);
+            product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
             productRepository.save(product);
-
-            log.info("Returned {} units of {} to stock. New stock: {}",
-                    item.getQuantity(), product.getName(), returnedStock);
         }
 
-        // Update order status
         order.setStatus(OrderStatus.CANCELLED);
         Order cancelledOrder = orderRepository.save(order);
-
-        log.info("✅ Order {} cancelled successfully", orderId);
-
-        // TODO: sendCancellationNotification(cancelledOrder);
 
         return mapToDTO(cancelledOrder);
     }
 
     // ============================================================
-    // GET ORDERS BY DATE RANGE
+    // BY DATE RANGE
     // ============================================================
     @Override
     public List<OrderDTO> getOrdersByDateRange(LocalDateTime start, LocalDateTime end) {
 
-        log.info("Fetching orders between {} and {}", start, end);
-
-        List<Order> orders = orderRepository.findByCreatedAtBetween(start, end);
-
-        log.info("Found {} orders in date range", orders.size());
-
-        return orders.stream()
+        return orderRepository.findByCreatedAtBetween(start, end)
+                .stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
     // ============================================================
-    // HELPER METHODS
+    // HELPER MAPPERS
     // ============================================================
-
-    // Convert Order Entity to OrderDTO
     private OrderDTO mapToDTO(Order order) {
         OrderDTO dto = new OrderDTO();
         dto.setId(order.getId());
@@ -360,7 +253,6 @@ public class OrderServiceImpl implements OrderService {
         return dto;
     }
 
-    // Convert Customer Entity to CustomerDTO
     private CustomerDTO mapCustomerToDTO(Customer customer) {
         CustomerDTO dto = new CustomerDTO();
         dto.setId(customer.getId());
@@ -374,23 +266,21 @@ public class OrderServiceImpl implements OrderService {
         return dto;
     }
 
-    // Convert list of OrderItem entities to OrderItemDTOs
-    private List<OrderItemDTO> mapOrderItemsToDTO(List<OrderItem> orderItems) {
-        return orderItems.stream()
+    private List<OrderItemDTO> mapOrderItemsToDTO(List<OrderItem> items) {
+        return items.stream()
                 .map(this::mapOrderItemToDTO)
                 .collect(Collectors.toList());
     }
 
-    // Convert OrderItem Entity to OrderItemDTO
-    private OrderItemDTO mapOrderItemToDTO(OrderItem orderItem) {
+    private OrderItemDTO mapOrderItemToDTO(OrderItem item) {
         OrderItemDTO dto = new OrderItemDTO();
-        dto.setId(orderItem.getId());
-        dto.setProductId(orderItem.getProduct().getId());
-        dto.setProductName(orderItem.getProduct().getName());
-        dto.setProductSku(orderItem.getProduct().getSku());
-        dto.setQuantity(orderItem.getQuantity());
-        dto.setUnitPrice(orderItem.getUnitPrice());
-        dto.setTotalPrice(orderItem.getTotalPrice());
+        dto.setId(item.getId());
+        dto.setProductId(item.getProduct().getId());
+        dto.setProductName(item.getProduct().getName());
+        dto.setProductSku(item.getProduct().getSku());
+        dto.setQuantity(item.getQuantity());
+        dto.setUnitPrice(item.getUnitPrice());
+        dto.setTotalPrice(item.getTotalPrice());
         return dto;
     }
 }

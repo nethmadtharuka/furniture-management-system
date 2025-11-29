@@ -13,7 +13,10 @@ import lombok.NoArgsConstructor;
 public class LoginResponse {
 
     private String token;
-    private String type = "Bearer";  // Token type
+
+    @Builder.Default  // ADD THIS
+    private String type = "Bearer";
+
     private Long userId;
     private String email;
     private String fullName;
