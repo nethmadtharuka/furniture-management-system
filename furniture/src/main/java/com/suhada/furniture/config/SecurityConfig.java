@@ -75,12 +75,13 @@ public class SecurityConfig {
                                 "/api/auth/**",
                                 "/api/test/**",
                                 "/api/test-repo/**",
+                                "/api/ai/**", // AI endpoints (product finder, chat, etc.)
 
                                 // Swagger Endpoints (VERY IMPORTANT)
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger-ui.html"
-                        ).permitAll()
+                                "/swagger-ui.html")
+                        .permitAll()
 
                         // Public read-only endpoints
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
@@ -102,12 +103,9 @@ public class SecurityConfig {
                         // ============================================================
                         // ANY AUTHENTICATED USER
                         // ============================================================
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated())
 
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 .authenticationProvider(authenticationProvider())
 

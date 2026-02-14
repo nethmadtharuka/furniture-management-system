@@ -24,33 +24,43 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
 
-        log.info("Loading user by email: {}", email);
+        log.info("🔍 Loading user by email: {}", email);
 
-        // Find user in database
+        // Fetch user from DB
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> {
-                    log.error("User not found with email: {}", email);
+                    log.error("❌ User not found with email: {}", email);
                     return new UsernameNotFoundException("User not found with email: " + email);
                 });
 
-        log.info("User found: {}, Role: {}", user.getFullName(), user.getRole());
+        log.info("✅ User found: {}, Role: {}", user.getFullName(), user.getRole());
+        log.info("🔐 Password hash from DB: '{}'", user.getPassword());
 
-        // Convert our User entity to Spring Security UserDetails
+        // IMPORTANT: Check if password is null or empty
+        if (user.getPassword() == null || user.getPassword().trim().isEmpty()) {
+            log.error("❌ ERROR: User has EMPTY password in DB!");
+        } else {
+            log.info("Password length = {}", user.getPassword().length());
+        }
+
+        boolean disabled = user.getStatus() == com.suhada.furniture.entity.Status.INACTIVE;
+        log.info("🟡 Account active: {}", !disabled);
+
+        // Return Spring Security User object
         return org.springframework.security.core.userdetails.User.builder()
                 .username(user.getEmail())
-                .password(user.getPassword())
+                .password(user.getPassword())   // Must be the bcrypt hash
                 .authorities(getAuthorities(user))
                 .accountExpired(false)
                 .accountLocked(false)
                 .credentialsExpired(false)
-                .disabled(user.getStatus() == com.suhada.furniture.entity.Status.INACTIVE)
+                .disabled(disabled)
                 .build();
     }
 
-    // Convert user role to Spring Security authorities
     private Collection<? extends GrantedAuthority> getAuthorities(User user) {
-        return Collections.singletonList(
-                new SimpleGrantedAuthority("ROLE_" + user.getRole().name())
-        );
+        String authority = "ROLE_" + user.getRole().name();
+        log.info("✔ Granted Authority: {}", authority);
+        return Collections.singletonList(new SimpleGrantedAuthority(authority));
     }
 }
