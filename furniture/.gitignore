@@ -35,4 +35,6 @@ build/
 
 # secrets (do not commit)
 furniture/src/main/resources/application.properties
+furniture/backup_secrets/
+backup_secrets/
 .env
