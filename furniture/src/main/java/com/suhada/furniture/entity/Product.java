@@ -20,7 +20,7 @@ public class Product {
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private String sku;  // Stock Keeping Unit (like: SOFA001)
+    private String sku;  // e.g., SOFA001
 
     @Column(nullable = false)
     private String name;
@@ -29,16 +29,16 @@ public class Product {
     private String description;
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal price;  // Selling price
+    private BigDecimal price;
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal costPrice;  // How much it costs you
+    private BigDecimal costPrice;
 
     @Column(nullable = false)
-    private Integer stockQuantity;  // How many in stock
+    private Integer stockQuantity;
 
     @Column(nullable = false)
-    private Integer reorderLevel;  // Alert when stock below this
+    private Integer reorderLevel;
 
     private String category;  // e.g., "Living Room", "Bedroom"
 
@@ -46,7 +46,10 @@ public class Product {
     @CollectionTable(name = "product_images",
             joinColumns = @JoinColumn(name = "product_id"))
     @Column(name = "image_url")
-    private List<String> images = new ArrayList<>();  // Multiple images
+    private List<String> images = new ArrayList<>();
+
+    @Column(length = 500)
+    private String model3DUrl;  // URL to 3D model file (e.g., .glb / .gltf)
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -63,7 +66,6 @@ public class Product {
         updatedAt = LocalDateTime.now();
     }
 
-    // Helper method to check if stock is low
     public boolean isLowStock() {
         return stockQuantity <= reorderLevel;
     }
