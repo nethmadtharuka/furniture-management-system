@@ -19,6 +19,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
@@ -28,6 +29,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsService userDetailsService;
+    private final CorsConfigurationSource corsConfigurationSource;
 
     // ============================================================
     // PASSWORD ENCODER
@@ -64,26 +66,38 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
         http
+                // ============================================================
+                // CORS
+                // ============================================================
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+
                 .csrf(AbstractHttpConfigurer::disable)
 
                 .authorizeHttpRequests(auth -> auth
 
                         // ============================================================
-                        // PUBLIC ENDPOINTS
+                        // PUBLIC ENDPOINTS - NO AUTHENTICATION REQUIRED
                         // ============================================================
                         .requestMatchers(
-                                "/api/auth/**",
-                                "/api/test/**",
-                                "/api/test-repo/**",
-                                "/api/ai/**", // AI endpoints (product finder, chat, etc.)
+                                "/api/auth/**",           // Login/Register
+                                "/api/test/**",           // Testing endpoints
+                                "/api/test-repo/**",      // Repo testing
+                                "/api/ai/**",             // AI features
 
-                                // Swagger Endpoints (VERY IMPORTANT)
+                                // 3D Viewer
+                                "/api/products/3d/**",    // 3D model API
+                                "/viewer/**",             // 3D viewer pages
+                                "/uploads/**",            // Static 3D model files
+
+                                // Swagger / API Docs
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")
                         .permitAll()
 
-                        // Public read-only endpoints
+                        // ============================================================
+                        // PUBLIC READ-ONLY ENDPOINTS
+                        // ============================================================
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/customers/**").permitAll()
 
@@ -94,18 +108,19 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/customers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/orders/**").hasRole("ADMIN")
 
-                        // STAFF + ADMIN
-                        .requestMatchers(HttpMethod.POST, "/api/products/**")
-                        .hasAnyRole("ADMIN", "STAFF")
-                        .requestMatchers(HttpMethod.PUT, "/api/products/**")
-                        .hasAnyRole("ADMIN", "STAFF")
+                        // ============================================================
+                        // STAFF + ADMIN ENDPOINTS
+                        // ============================================================
+                        .requestMatchers(HttpMethod.POST, "/api/products/**").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(HttpMethod.PUT, "/api/products/**").hasAnyRole("ADMIN", "STAFF")
 
                         // ============================================================
-                        // ANY AUTHENTICATED USER
+                        // ALL OTHER REQUESTS - REQUIRE AUTHENTICATION
                         // ============================================================
                         .anyRequest().authenticated())
 
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 .authenticationProvider(authenticationProvider())
 
