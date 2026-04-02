@@ -3,12 +3,11 @@ FROM maven:3.9.6-eclipse-temurin-17 AS builder
 
 WORKDIR /app
 
-# Cache dependencies first
+# Copy pom and source
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
-
-# Build
 COPY src ./src
+
+# Build directly (skip offline caching which can fail)
 RUN mvn clean package -DskipTests -B
 
 # ===== STAGE 2: Runtime =====
@@ -19,8 +18,7 @@ WORKDIR /app
 # Non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Create uploads directory and set permissions
-# (you are managing storage separately — this keeps uploads within container)
+# Create uploads directory
 RUN mkdir -p /home/uploads && chown -R appuser:appgroup /home/uploads
 
 COPY --from=builder /app/target/*.jar app.jar
