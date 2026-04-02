@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${title ?: '3D Furniture Viewer - Suhada'}">3D Furniture Viewer</title>
+
+    <!-- Google Model Viewer Library -->
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.8em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        /* ============================================================
+           VIEWER CARD
+           ============================================================ */
+        .viewer-card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 0;
+            margin-bottom: 50px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .viewer-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+        }
+
+        model-viewer {
+            width: 100%;
+            height: 700px;
+            background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+            border-radius: 20px 0 0 20px;
+        }
+
+        .product-info {
+            padding: 50px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background: white;
+        }
+
+        .ar-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff5252 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.95em;
+            font-weight: 700;
+            margin-bottom: 20px;
+            width: fit-content;
+            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.3);
+        }
+
+        .product-name {
+            font-size: 2.2em;
+            color: #333;
+            margin-bottom: 15px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .product-price {
+            font-size: 2.5em;
+            color: #667eea;
+            margin-bottom: 25px;
+            font-weight: 800;
+        }
+
+        .product-sku {
+            font-size: 0.95em;
+            color: #999;
+            margin-bottom: 10px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .product-category {
+            display: inline-block;
+            background: #f0f0f0;
+            color: #667eea;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .product-description {
+            color: #666;
+            line-height: 1.8;
+            margin-bottom: 30px;
+            font-size: 1.05em;
+        }
+
+        .features-list {
+            list-style: none;
+            margin-bottom: 35px;
+        }
+
+        .features-list li {
+            padding: 12px 0;
+            color: #555;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            font-size: 1em;
+        }
+
+        .features-list li:last-child {
+            border-bottom: none;
+        }
+
+        /* ✅ FIX: Only apply ::before checkmark to standard items,
+           not to the 3D model status items which use their own icons */
+        .features-list li.standard-item:before {
+            content: "✓";
+            color: #4CAF50;
+            font-weight: bold;
+            margin-right: 15px;
+            font-size: 1.3em;
+        }
+
+        .features-list li.in-stock:before {
+            content: "✓";
+            color: #4CAF50;
+            font-weight: bold;
+            margin-right: 15px;
+            font-size: 1.3em;
+        }
+
+        .features-list li.out-of-stock:before {
+            content: "✗";
+            color: #f44336;
+            font-weight: bold;
+            margin-right: 15px;
+            font-size: 1.3em;
+        }
+
+        /* Button Styles */
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+
+        button, .btn {
+            flex: 1;
+            min-width: 150px;
+            padding: 16px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.05em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-ar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-ar:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn-ar:active {
+            transform: translateY(-1px);
+        }
+
+        .btn-cart {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            box-shadow: 0 10px 25px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-cart:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 35px rgba(76, 175, 80, 0.5);
+        }
+
+        .btn-cart:active {
+            transform: translateY(-1px);
+        }
+
+        /* Instructions Box */
+        .instructions {
+            background: linear-gradient(135deg, #f0f0f0 0%, #fafafa 100%);
+            padding: 25px;
+            border-radius: 12px;
+            margin-top: 30px;
+            color: #333;
+            border-left: 5px solid #667eea;
+        }
+
+        .instructions h4 {
+            margin-bottom: 15px;
+            color: #667eea;
+            font-size: 1.1em;
+            font-weight: 700;
+        }
+
+        .instructions ol {
+            margin-left: 25px;
+            line-height: 2;
+            color: #666;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        /* Error Message */
+        .error-message {
+            background: #ffebee;
+            color: #c62828;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 5px solid #c62828;
+            margin-bottom: 30px;
+        }
+
+        /* Loading Spinner */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 700px;
+            color: #667eea;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+
+        .spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-right: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 1024px) {
+            .viewer-card {
+                grid-template-columns: 1fr;
+            }
+
+            model-viewer {
+                border-radius: 20px 20px 0 0;
+                height: 500px;
+            }
+
+            .product-info {
+                border-radius: 0 0 20px 20px;
+            }
+
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .product-name {
+                font-size: 1.8em;
+            }
+
+            .product-price {
+                font-size: 2em;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button, .btn {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .product-info {
+                padding: 25px;
+            }
+
+            .product-name {
+                font-size: 1.5em;
+            }
+
+            .product-price {
+                font-size: 1.8em;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            model-viewer {
+                height: 350px;
+            }
+        }
+
+        /* Products Grid */
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 50px;
+        }
+
+        .product-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+
+        .product-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+        }
+
+        .product-card-image {
+            background: linear-gradient(135deg, #f5f5f5, #ffffff);
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+        }
+
+        .product-card-content {
+            padding: 20px;
+        }
+
+        .product-card-name {
+            font-size: 1.2em;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .product-card-price {
+            font-size: 1.5em;
+            color: #667eea;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .product-card-button {
+            width: 100%;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .product-card-button:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+
+        /* No Model Message */
+        .no-model-message {
+            background: #fff3cd;
+            color: #856404;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 5px solid #ffc107;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <!-- Header -->
+    <div class="header">
+        <h1>🛋️ 3D Furniture Viewer</h1>
+        <p>Experience furniture in stunning 3D and preview in your room with AR</p>
+    </div>
+
+    <!-- Error Message -->
+    <div th:if="${error}" class="error-message">
+        ⚠️ <span th:text="${error}"></span>
+    </div>
+
+    <!-- ✅ FIX: Changed !${product} to ${product == null} -->
+    <!-- Single Product Viewer -->
+    <div th:if="${product != null}">
+        <div class="viewer-card">
+
+            <!-- 3D Model Viewer -->
+            <!-- ✅ CORRECT — combine both into one th:attr with comma separator -->
+            <model-viewer
+                    id="productViewer"
+                    th:attr="src=${product.model3DUrl ?: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb'},alt=${product.name}"
+                    ar
+                    ar-modes="webxr scene-viewer quick-look"
+                    camera-controls
+                    auto-rotate
+                    shadow-intensity="1">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <span>Loading 3D Model...</span>
+                </div>
+            </model-viewer>
+
+            <!-- Product Information -->
+            <div class="product-info">
+                <div>
+                    <div class="ar-badge">✨ AR READY</div>
+
+                    <div class="product-sku" th:text="'SKU: ' + ${product.sku}"></div>
+                    <h2 class="product-name" th:text="${product.name}"></h2>
+
+                    <div class="product-category" th:text="${product.category}"></div>
+
+                    <div class="product-price"
+                         th:text="'LKR ' + ${#numbers.formatDecimal(product.price, 0, 2)}"></div>
+
+                    <p class="product-description" th:text="${product.description}"></p>
+
+                    <!-- Features List -->
+                    <!-- ✅ FIX: Added class="standard-item" so ::before applies correctly.
+                         Removed hardcoded ✓ from 3D model status items — CSS handles it. -->
+                    <ul class="features-list">
+                        <li class="standard-item"
+                            th:text="'Stock: ' + ${product.stockQuantity} + ' items'"></li>
+                        <li class="standard-item"
+                            th:text="'Price: LKR ' + ${#numbers.formatDecimal(product.price, 0, 2)}"></li>
+                        <li class="standard-item"
+                            th:text="'Category: ' + ${product.category}"></li>
+                        <li th:if="${has3DModel}" class="in-stock">3D Model Available</li>
+                        <li th:unless="${has3DModel}" class="out-of-stock">3D Model Not Available</li>
+                    </ul>
+
+                    <!-- ✅ FIX: Changed !${has3DModel} to ${!has3DModel} -->
+                    <!-- No 3D Model Warning -->
+                    <div th:if="${!has3DModel}" class="no-model-message">
+                        📢 This product doesn't have a 3D model yet.
+                        Admin can upload one via the management panel.
+                    </div>
+
+                    <!-- AR Instructions -->
+                    <div class="instructions">
+                        <h4>📱 How to View in AR:</h4>
+                        <ol>
+                            <li>Click "View in AR" button below</li>
+                            <li>Point your camera at a wall or floor in your room</li>
+                            <li>Tap to place the furniture in your space</li>
+                            <li>Move and rotate to see how it fits</li>
+                            <li>Take a screenshot to save your design</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Buttons -->
+                <div class="button-group">
+                    <button class="btn-ar" th:if="${has3DModel}" onclick="viewInAR()">
+                        📷 View in AR
+                    </button>
+                    <button class="btn-ar" th:unless="${has3DModel}" disabled
+                            style="opacity: 0.5; cursor: not-allowed;">
+                        📷 View in AR (Not Available)
+                    </button>
+                    <button class="btn-cart" onclick="addToCart()">
+                        🛒 Add to Cart
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ✅ FIX: Changed !${product} and ${products} to proper Thymeleaf syntax -->
+    <!-- Multiple Products Grid -->
+    <div th:if="${product == null and products != null}">
+        <h2 style="color: white; margin-bottom: 30px; font-size: 1.8em;">All Products</h2>
+        <div class="products-grid">
+            <div th:each="prod : ${products}"
+                 class="product-card"
+                 th:onclick="|window.location.href='/viewer/3d/${prod.id}'|">
+                <div class="product-card-image">
+                    <span th:text="'🛋️ ' + ${prod.name}"></span>
+                </div>
+                <div class="product-card-content">
+                    <div class="product-card-name" th:text="${prod.name}"></div>
+                    <div class="product-card-price"
+                         th:text="'LKR ' + ${#numbers.formatDecimal(prod.price, 0, 2)}"></div>
+                    <button class="product-card-button">View in 3D</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- JavaScript -->
+<script>
+    // View in AR
+    function viewInAR() {
+        const viewer = document.getElementById('productViewer');
+        if (viewer && viewer.activateAR) {
+            viewer.activateAR();
+            console.log('📱 AR Mode activated');
+        } else {
+            alert('⚠️ AR is not available on this device or browser');
+        }
+    }
+
+    // Add to cart — TODO: wire up to backend API
+    function addToCart() {
+        const nameEl = document.querySelector('.product-name');
+        if (nameEl) {
+            const productName = nameEl.textContent;
+            // Replace alert with a proper toast notification before demo
+            alert('✅ "' + productName + '" added to cart!');
+            console.log('Added to cart:', productName);
+        }
+    }
+
+    // Model Viewer event listeners
+    const viewer = document.getElementById('productViewer');
+    if (viewer) {
+        viewer.addEventListener('load', () => {
+            console.log('✅ 3D Model loaded successfully');
+        });
+
+        viewer.addEventListener('error', (e) => {
+            console.error('❌ Model load error:', e);
+        });
+
+        viewer.addEventListener('ar-status', (e) => {
+            console.log('📱 AR Status:', e.detail.status);
+        });
+    }
+</script>
+</body>
+</html>
