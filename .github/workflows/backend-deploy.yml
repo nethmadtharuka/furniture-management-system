@@ -41,15 +41,13 @@ jobs:
         with:
           context: ./backend/furniture
           push: true
-          tags: |
-            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
           cache-to: type=inline
 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: suhada-furniture-api
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          images: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+      - name: Restart Azure Web App
+        run: |
+          curl -s -X POST \
+            "https://management.azure.com/subscriptions/c05fe108-d78a-4f9e-be27-79dfc93e6aec/resourceGroups/suhada-furniture-rg/providers/Microsoft.Web/sites/suhada-furniture-api/restart?api-version=2022-03-01" \
+            -H "Authorization: Bearer $(curl -s 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/' -H 'Metadata: true' | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"access_token\"])')" \
+            -H "Content-Length: 0"
