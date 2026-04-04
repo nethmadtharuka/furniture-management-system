@@ -6,18 +6,13 @@ on:
     paths:
       - 'backend/furniture/**'
       - '.github/workflows/backend-deploy.yml'
-  pull_request:
-    branches: [main, master]
-    paths:
-      - 'backend/furniture/**'
 
 env:
   IMAGE_NAME: suhada-backend
 
 jobs:
-  # ── 1. Build ──────────────────────────────────────────────────────────────
-  build:
-    name: Build
+  build-and-deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
 
     steps:
@@ -33,16 +28,6 @@ jobs:
       - name: Build JAR
         working-directory: ./backend/furniture
         run: mvn clean package -DskipTests -B
-
-  # ── 2. Docker Build & Push to ACR ────────────────────────────────────────
-  docker-push:
-    name: Docker Build & Push
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-
-    steps:
-      - uses: actions/checkout@v4
 
       - name: Log in to ACR
         uses: azure/docker-login@v2
@@ -61,3 +46,10 @@ jobs:
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
           cache-to: type=inline
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: suhada-furniture-api
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          images: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
