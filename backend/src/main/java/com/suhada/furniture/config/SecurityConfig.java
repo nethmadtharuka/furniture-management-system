@@ -1,6 +1,7 @@
 package com.suhada.furniture.config;
 
 import com.suhada.furniture.security.JwtAuthenticationFilter;
+import com.suhada.furniture.security.AiRateLimitFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,6 +31,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsService userDetailsService;
     private final CorsConfigurationSource corsConfigurationSource;
+    private final AiRateLimitFilter aiRateLimitFilter;
 
     // ============================================================
     // PASSWORD ENCODER
@@ -82,17 +84,14 @@ public class SecurityConfig {
                                 "/api/auth/**",           // Login/Register
                                 "/api/test/**",           // Testing endpoints
                                 "/api/test-repo/**",      // Repo testing
-                                "/api/ai/**",             // AI features
-
                                 // 3D Viewer
-                                "/api/products/3d/**",    // 3D model API
                                 "/viewer/**",             // 3D viewer pages
                                 "/uploads/**",            // Static 3D model files
 
                                 // Swagger / API Docs
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger-ui.html"
+                                "/swagger-ui.html",
                                 "/actuator/**"
                         )
                         .permitAll()
@@ -100,8 +99,19 @@ public class SecurityConfig {
                         // ============================================================
                         // PUBLIC READ-ONLY ENDPOINTS
                         // ============================================================
+                        // ============================================================
+                        // - Products are publicly viewable
+                        // - 3D model URLs can be fetched publicly
+                        // ============================================================
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/customers/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/products/3d/**").permitAll()
+
+                        // ============================================================
+                        // AI ENDPOINTS
+                        // ============================================================
+                        // Keep AI behind authentication (protect cost + abuse)
+                        .requestMatchers("/api/ai/**").authenticated()
 
                         // ============================================================
                         // ADMIN-ONLY ENDPOINTS
@@ -109,12 +119,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/customers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/orders/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/products/3d/**").hasRole("ADMIN")
 
                         // ============================================================
                         // STAFF + ADMIN ENDPOINTS
                         // ============================================================
                         .requestMatchers(HttpMethod.POST, "/api/products/**").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers(HttpMethod.PUT, "/api/products/**").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(HttpMethod.POST, "/api/products/3d/**").hasAnyRole("ADMIN", "STAFF")
 
                         // ============================================================
                         // ALL OTHER REQUESTS - REQUIRE AUTHENTICATION
@@ -125,6 +137,9 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 .authenticationProvider(authenticationProvider())
+
+                // Rate limit AI endpoints before auth processing
+                .addFilterBefore(aiRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
 
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

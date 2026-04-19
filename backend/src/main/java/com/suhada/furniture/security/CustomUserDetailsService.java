@@ -34,7 +34,6 @@ public class CustomUserDetailsService implements UserDetailsService {
                 });
 
         log.info("✅ User found: {}, Role: {}", user.getFullName(), user.getRole());
-        log.info("🔐 Password hash from DB: '{}'", user.getPassword());
 
         // IMPORTANT: Check if password is null or empty
         if (user.getPassword() == null || user.getPassword().trim().isEmpty()) {

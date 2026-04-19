@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   FiHeart,
   FiShoppingCart,
@@ -32,24 +32,11 @@ import {
   FiClock,
   FiPhone,
   FiMessageCircle,
+  FiBox,
 } from 'react-icons/fi';
 import { BsWhatsapp } from 'react-icons/bs';
-import axios from 'axios';
 import toast from 'react-hot-toast';
-
-// API Instance
-const api = axios.create({
-  baseURL: 'http://localhost:8080/api',
-  headers: { 'Content-Type': 'application/json' },
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+import api, { getBackendBaseUrl } from '../services/api';
 
 // Animation Variants
 const fadeInUp = {
@@ -67,7 +54,6 @@ const staggerContainer = {
 
 const ProductDetail = () => {
   const { id } = useParams(); // Get product ID from URL
-  const navigate = useNavigate();
 
   // State
   const [product, setProduct] = useState(null);
@@ -82,6 +68,21 @@ const ProductDetail = () => {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
   const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 });
+
+  const has3DModel = Boolean(product?.model3DUrl);
+  const backendBaseUrl = getBackendBaseUrl();
+
+  const isMobile = (() => {
+    const ua = navigator.userAgent || '';
+    return /Android|iPhone|iPad|iPod/i.test(ua);
+  })();
+
+  const open3DViewer = ({ preferAR } = { preferAR: false }) => {
+    if (!product?.id) return;
+    const url = new URL(`${backendBaseUrl}/viewer/3d/${product.id}`);
+    if (preferAR) url.searchParams.set('mode', 'ar');
+    window.open(url.toString(), '_blank', 'noopener,noreferrer');
+  };
 
   /**
    * 🎓 FETCH PRODUCT BY ID
@@ -557,6 +558,38 @@ const ProductDetail = () => {
                   {product.stockQuantity === 0 ? 'Out of Stock' : 'Add to Cart'}
                 </motion.button>
 
+                {/* 3D / AR Buttons */}
+                <div className="flex flex-1 min-w-[200px] gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => open3DViewer({ preferAR: false })}
+                    disabled={!has3DModel}
+                    className="flex-1 py-4 px-6 bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-semibold rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-primary/60 hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                    title={has3DModel ? 'Open interactive 3D viewer' : '3D model not available for this product'}
+                  >
+                    <FiBox className="w-5 h-5" />
+                    View in 3D
+                  </motion.button>
+
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => open3DViewer({ preferAR: true })}
+                    disabled={!has3DModel || !isMobile}
+                    className="flex-1 py-4 px-6 bg-gradient-to-r from-gray-900 to-gray-700 dark:from-gray-100 dark:to-gray-200 text-white dark:text-gray-900 font-semibold rounded-xl shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                    title={
+                      !has3DModel
+                        ? '3D model not available for this product'
+                        : !isMobile
+                          ? 'AR is best supported on mobile devices'
+                          : 'Open AR viewer'
+                    }
+                  >
+                    View in AR
+                  </motion.button>
+                </div>
+
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -598,6 +631,11 @@ const ProductDetail = () => {
                   <FiPhone className="w-4 h-4" />
                   Call Us
                 </a>
+                {!has3DModel && (
+                  <span className="px-4 py-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 rounded-full text-sm font-medium">
+                    3D/AR not available for this product yet
+                  </span>
+                )}
               </motion.div>
 
               {/* Features */}

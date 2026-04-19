@@ -17,7 +17,6 @@ import java.io.IOException;
 @RestController
 @RequestMapping("/api/files")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 @Slf4j
 public class FileController {
 

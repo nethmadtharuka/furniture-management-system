@@ -68,7 +68,7 @@
  * ============================================================================
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
@@ -90,6 +90,7 @@ import {
   FiTruck,
   FiShield,
   FiArrowUp,
+  FiBox,
 } from 'react-icons/fi';
 import { BsGrid3X3Gap, BsListUl } from 'react-icons/bs';
 import axios from 'axios';
@@ -1109,12 +1110,11 @@ const Products = () => {
                     : 'space-y-4'
                 }
               >
-                {products.map((product, index) => (
+                {products.map((product) => (
                   <ProductCard
                     key={product.id}
                     product={product}
                     viewMode={viewMode}
-                    index={index}
                     isWishlisted={wishlist.includes(product.id)}
                     onToggleWishlist={() => toggleWishlist(product.id)}
                     onQuickView={() => setQuickViewProduct(product)}
@@ -1196,7 +1196,6 @@ const Products = () => {
 const ProductCard = ({ 
   product, 
   viewMode, 
-  index, 
   isWishlisted, 
   onToggleWishlist, 
   onQuickView,
@@ -1204,6 +1203,7 @@ const ProductCard = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const has3DModel = Boolean(product?.model3DUrl);
 
   // Default image if none provided
   const productImage = product.images && product.images.length > 0
@@ -1229,6 +1229,12 @@ const ProductCard = ({
             {product.lowStock && (
               <span className="absolute top-2 left-2 px-2 py-1 bg-red-500 text-white text-xs font-medium rounded-full">
                 Low Stock
+              </span>
+            )}
+            {has3DModel && (
+              <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-1 bg-black/70 text-white text-xs font-semibold rounded-full">
+                <FiBox className="w-3.5 h-3.5" />
+                AR
               </span>
             )}
           </div>
@@ -1339,6 +1345,13 @@ const ProductCard = ({
             </motion.span>
           )}
         </div>
+
+        {has3DModel && (
+          <span className="absolute top-4 right-4 inline-flex items-center gap-1 px-3 py-1 bg-black/70 backdrop-blur-sm text-white text-xs font-semibold rounded-full">
+            <FiBox className="w-3.5 h-3.5" />
+            AR
+          </span>
+        )}
 
         {/* Quick Action Buttons */}
         <motion.div

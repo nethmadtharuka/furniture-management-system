@@ -22,7 +22,6 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/products/3d")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class Product3DController {
 
     private final Product3DModelService modelService;

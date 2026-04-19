@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/test")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 @Slf4j
 public class GeminiTestController {

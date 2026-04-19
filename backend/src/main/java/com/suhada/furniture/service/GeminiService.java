@@ -7,7 +7,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Service to interact with Google Gemini AI via REST API
@@ -24,6 +30,27 @@ public class GeminiService {
     private final String model;
     private final String baseUrl;
     private final Gson gson;
+
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(12);
+    private static final Duration OPEN_CIRCUIT_FOR = Duration.ofSeconds(30);
+    private static final int OPEN_CIRCUIT_AFTER_FAILURES = 5;
+
+    private int consecutiveFailures = 0;
+    private Instant circuitOpenedAt = null;
+
+    private static final Duration CACHE_TTL = Duration.ofMinutes(5);
+    private static final int CACHE_MAX = 200;
+    private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
+
+    private static final class CacheEntry {
+        final Instant expiresAt;
+        final String value;
+
+        CacheEntry(Instant expiresAt, String value) {
+            this.expiresAt = expiresAt;
+            this.value = value;
+        }
+    }
 
     public GeminiService(
             @Value("${gemini.api.key}") String apiKey,
@@ -51,7 +78,17 @@ public class GeminiService {
      * @return AI-generated response text
      */
     public String generateContent(String prompt) {
-        log.info("📤 Sending prompt to Gemini: {}", prompt);
+        String cacheKey = model + "::" + prompt;
+        CacheEntry cached = cache.get(cacheKey);
+        if (cached != null && cached.expiresAt.isAfter(Instant.now())) {
+            return cached.value;
+        }
+
+        if (isCircuitOpen()) {
+            throw new RuntimeException("Gemini temporarily unavailable (circuit open)");
+        }
+
+        log.info("📤 Sending prompt to Gemini");
 
         try {
             // Build request body
@@ -68,19 +105,56 @@ public class GeminiService {
                     .bodyValue(requestBody.toString())
                     .retrieve()
                     .bodyToMono(String.class)
+                    .timeout(REQUEST_TIMEOUT)
                     .block(); // Block to get synchronous response
 
             // Parse response
             String aiResponse = parseResponse(response);
             log.info("✅ Gemini responded successfully");
 
+            onSuccess();
+            putCache(cacheKey, aiResponse);
             return aiResponse;
 
+        } catch (WebClientResponseException e) {
+            onFailure();
+            throw new RuntimeException("Gemini request failed: " + e.getStatusCode().value(), e);
         } catch (Exception e) {
             log.error("❌ Error calling Gemini API: {}", e.getMessage(), e);
             log.error("Full exception: ", e);
+            onFailure();
             throw new RuntimeException("Failed to generate content: " + e.getMessage(), e);
         }
+    }
+
+    private synchronized boolean isCircuitOpen() {
+        if (circuitOpenedAt == null) return false;
+        if (Instant.now().isAfter(circuitOpenedAt.plus(OPEN_CIRCUIT_FOR))) {
+            circuitOpenedAt = null;
+            consecutiveFailures = 0;
+            return false;
+        }
+        return true;
+    }
+
+    private synchronized void onSuccess() {
+        consecutiveFailures = 0;
+        circuitOpenedAt = null;
+    }
+
+    private synchronized void onFailure() {
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= OPEN_CIRCUIT_AFTER_FAILURES && circuitOpenedAt == null) {
+            circuitOpenedAt = Instant.now();
+        }
+    }
+
+    private void putCache(String key, String value) {
+        if (cache.size() > CACHE_MAX) {
+            // Best-effort eviction: clear the cache.
+            cache.clear();
+        }
+        cache.put(key, new CacheEntry(Instant.now().plus(CACHE_TTL), value));
     }
 
     /**

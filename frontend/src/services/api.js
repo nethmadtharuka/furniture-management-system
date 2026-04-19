@@ -4,6 +4,13 @@ import toast from 'react-hot-toast';
 // Base URL - your Spring Boot backend
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
+export const getBackendBaseUrl = () => {
+  const explicit = import.meta.env.VITE_BACKEND_BASE_URL;
+  if (explicit) return explicit.replace(/\/+$/, '');
+  // If API base URL ends with `/api`, infer backend base.
+  return API_BASE_URL.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+};
+
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
